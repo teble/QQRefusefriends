@@ -1,18 +1,6 @@
 apply plugin: 'com.android.application'
 
 android {
-    signingConfigs {
-        config {
-            def keystoreProperties = new Properties()
-            def keystorePropertiesFile = project.rootProject.file("my.keystore.properties")
-            keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-
-            keyAlias keystoreProperties['key0']
-            keyPassword keystoreProperties['keyPassword']
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
-        }
-    }
     compileSdkVersion 28
     defaultConfig {
         applicationId "cn.huasteble.refusefriends"
@@ -27,7 +15,6 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.config
         }
     }
 }
