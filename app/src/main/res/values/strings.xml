@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">QQ一键拒加好友</string>
+    <string name="login_qq">登陆QQ</string>
+    <string name="refuse_friends">拒加好友</string>
+</resources>
