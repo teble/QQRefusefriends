@@ -3,12 +3,14 @@ package cn.huasteble.refusefriends;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.net.Uri;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -19,28 +21,23 @@ import android.widget.Button;
 
 import com.alibaba.fastjson.JSON;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
 import cn.huasteble.refusefriends.config.Constance;
-import cn.huasteble.refusefriends.handler.CrashHandler;
 import cn.huasteble.refusefriends.utils.Calculation;
-import cn.huasteble.refusefriends.utils.HttpUtils;
+import cn.huasteble.refusefriends.utils.OkHttpUtils;
+import cn.huasteble.refusefriends.utils.ProgressView;
 import cn.huasteble.refusefriends.utils.ToastMessageThread;
-import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
-
-import static cn.huasteble.refusefriends.utils.Calculation.getBkn;
-import static cn.huasteble.refusefriends.utils.Calculation.getSKey;
 
 /**
  * @author teble
  */
-@Setter
 @Getter
+@Setter
 public class MainActivity extends AppCompatActivity {
     final private static String TAG = "main";
     @SuppressLint("StaticFieldLeak")
@@ -49,21 +46,32 @@ public class MainActivity extends AppCompatActivity {
     private long firstTime = 0;
     private int bkn = 0;
     private String cookie;
+    private boolean startView = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        CrashHandler.getInstance().init();
         context = getApplicationContext();
         messageThread = new ToastMessageThread();
         messageThread.start();
         setMainView();
+
+        Intent intent = getIntent();
+        String action = intent.getAction();
+        if (Intent.ACTION_VIEW.equals(action)) {
+            Uri uri = intent.getData();
+            if (uri != null) {
+                String url = uri.toString();
+                Log.d(TAG, "onCreate: " + JSON.toJSONString(uri));
+                Log.d(TAG, "====callbackUrl: " + url);
+                setWebView(url);
+            }
+        }
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (this.findViewById(android.R.id.content) == findViewById(R.id.webView)) {
-            Log.d(TAG, "onKeyDown: ");
+        if (!isStartView()) {
             setMainView();
             return true;
         }
@@ -73,7 +81,7 @@ public class MainActivity extends AppCompatActivity {
                 messageThread.sendMessage("再按一次退出程序");
                 firstTime = secondTime;
                 return true;
-            } else{
+            } else {
                 System.exit(0);
             }
         }
@@ -81,48 +89,55 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setMainView() {
+        setStartView(true);
         setContentView(R.layout.activity_main);
         Button button1 = findViewById(R.id.button1);
         Button button2 = findViewById(R.id.button2);
-        button1.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-//                messageThread.sendMessage("请先登陆QQ！");
-                setWebView();
+        button1.setOnClickListener(v -> setWebView(null));
+        button2.setOnClickListener(v -> {
+            if (bkn == 0) {
+                messageThread.sendMessage("请先登陆QQ");
+                setMainView();
+                return;
             }
-        });
-        button2.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (bkn == 0) {
-                    messageThread.sendMessage("请先登陆QQ");
-                    setMainView();
-                    return;
-                }
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        Map<String, String> map = new HashMap<>();
-                        map.put("Host", "ti.qq.com");
-                        map.put("Connection", "Keep-Alive");
-                        map.put("Cookie", cookie);
-                        String response = HttpUtils.post(Constance.POST_URL, map, Constance.POST_DATA + bkn);
-                        messageThread.sendMessage(response);
+            new Thread(() -> {
+                Map<String, String> headers = new HashMap<String, String>() {
+                    {
+                        put("Host", "ti.qq.com");
+                        put("Connection", "Keep-Alive");
+                        put("Cookie", cookie);
                     }
-                });
-            }
+                };
+                String response = OkHttpUtils.post(Constance.POST_URL, Constance.POST_DATA + bkn, headers);
+                Map<String, Object> res = JSON.parseObject(response);
+                String msg = (String) res.get("msg");
+                messageThread.sendMessage(msg);
+            }).start();
         });
     }
 
-    private void setWebView() {
+    private void setWebView(String url) {
+        setStartView(false);
         setContentView(R.layout.activity_web);
-        init();
+        init(url);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private void init() {
+    private void init(String url) {
+        ProgressView progressView;
         final WebView webView = findViewById(R.id.webView);
-        webView.loadUrl(Constance.QZONE_URL);
+        if (url == null) {
+            webView.loadUrl(Constance.QZONE_URL);
+        } else {
+            webView.loadUrl(url);
+        }
+
+        progressView = new ProgressView(context);
+        progressView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp2px(context)));
+        progressView.setColor(Color.parseColor("#FFFF00CC"));
+        progressView.setProgress(10);
+
+        webView.addView(progressView);
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest webResourceRequest) {
@@ -132,7 +147,13 @@ public class MainActivity extends AppCompatActivity {
                     view.loadUrl(uri.getPath());
                 } else {
                     try {
-                        final Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                        String url = uri.toString()
+                                .replace("googlechrome", "refusefriends")
+                                .replace("Chrome", "refusefriends");
+                        Uri uri1 = Uri.parse(url);
+                        Log.d(TAG, "====Replace: " + JSON.toJSONString(uri1));
+                        Log.d(TAG, "shouldOverrideUrlLoading: " + uri1.toString());
+                        final Intent intent = new Intent(Intent.ACTION_VIEW, uri1);
                         Log.d(TAG, "====Intent: " + JSON.toJSONString(intent));
                         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                         context.startActivity(intent);
@@ -159,7 +180,7 @@ public class MainActivity extends AppCompatActivity {
                         Log.d(TAG, "onProgressChanged: " + cookies);
                         setCookie(cookies);
                         sKey = Calculation.getSKey(cookies);
-                        Log.d(TAG, "onProgressChanged: "+ sKey);
+                        Log.d(TAG, "onProgressChanged: " + sKey);
                         if (sKey != null) {
                             setBkn(Calculation.getBkn(sKey));
                             messageThread.sendMessage("登陆成功！");
@@ -167,17 +188,23 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                 } else {
-                    //网页正在加载,打开ProgressDialog
                     openDialog(newProgress);
                 }
             }
 
             private void closeDialog() {
+                progressView.setVisibility(View.GONE);
             }
 
             private void openDialog(int newProgress) {
+                progressView.setProgress(newProgress);
             }
         });
+    }
+
+    private int dp2px(Context context) {
+        final float scale = context.getResources().getDisplayMetrics().density;
+        return (int) ((float) 4 * scale + 0.5f);
     }
 
     public static Context getContext() {
