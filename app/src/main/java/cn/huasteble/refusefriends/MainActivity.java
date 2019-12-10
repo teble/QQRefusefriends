@@ -140,6 +140,25 @@ public class MainActivity extends AppCompatActivity {
         webView.addView(progressView);
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageFinished(WebView view, String url) {
+
+                CookieManager cookieManager = CookieManager.getInstance();
+                String cookies = cookieManager.getCookie(Constance.QZONE_URL);
+                String sKey;
+                if (cookies != null && !Constance.QZONE_URL.equals(url)) {
+                    Log.d(TAG, "onProgressChanged: " + cookies);
+                    setCookie(cookies);
+                    sKey = Calculation.getSKey(cookies);
+                    Log.d(TAG, "onProgressChanged: " + sKey);
+                    if (sKey != null) {
+                        setBkn(Calculation.getBkn(sKey));
+                        messageThread.sendMessage("登陆成功！");
+                        setMainView();
+                    }
+                }
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest webResourceRequest) {
                 Uri uri = webResourceRequest.getUrl();
                 Log.d(TAG, "====Uri: " + JSON.toJSONString(uri));
@@ -173,20 +192,6 @@ public class MainActivity extends AppCompatActivity {
 
                 if (newProgress == Constance.LOADING_COMPLETED) {
                     closeDialog();
-                    CookieManager cookieManager = CookieManager.getInstance();
-                    String cookies = cookieManager.getCookie(Constance.QZONE_URL);
-                    String sKey;
-                    if (cookies != null && !view.getUrl().equals(Constance.QZONE_URL)) {
-                        Log.d(TAG, "onProgressChanged: " + cookies);
-                        setCookie(cookies);
-                        sKey = Calculation.getSKey(cookies);
-                        Log.d(TAG, "onProgressChanged: " + sKey);
-                        if (sKey != null) {
-                            setBkn(Calculation.getBkn(sKey));
-                            messageThread.sendMessage("登陆成功！");
-                            setMainView();
-                        }
-                    }
                 } else {
                     openDialog(newProgress);
                 }
